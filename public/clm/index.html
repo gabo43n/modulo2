@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visualizador CLM - PostgreSQL</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, Segoe UI, Arial, sans-serif; margin: 0; background: #f4f5f7; color: #1a1a1a; }
+  header { background: #1e293b; color: #fff; padding: 1.25rem 2rem; display: flex; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 1.25rem; margin: 0; }
+  header p { margin: 0.15rem 0 0; font-size: 0.8rem; color: #94a3b8; }
+  #estado { font-size: 0.85rem; padding: 0.25rem 0.75rem; border-radius: 999px; background: #64748b; }
+  #estado.ok { background: #16a34a; }
+  #estado.error { background: #dc2626; }
+  main { padding: 1.5rem 2rem; max-width: 1200px; margin: 0 auto; }
+  section { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem; overflow: hidden; }
+  section h2 { margin: 0; padding: 0.85rem 1.25rem; font-size: 1rem; border-bottom: 1px solid #e5e7eb; background: #f8fafc; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.6rem 1.25rem; border-bottom: 1px solid #f0f0f0; }
+  th { color: #64748b; font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  .vacio { padding: 1.25rem; color: #94a3b8; font-style: italic; }
+  .badge { display: inline-block; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.75rem; background: #e2e8f0; }
+  .badge.Validez_Legal { background: #dcfce7; color: #166534; }
+  .badge.Anulado, .badge.Expirado { background: #fee2e2; color: #991b1b; }
+  .badge.Negociacion { background: #fef9c3; color: #854d0e; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Visualizador CLM (PostgreSQL)</h1>
+    <p>Datos leidos en vivo desde empresa_cliente / contrato / clausula</p>
+  </div>
+  <span id="estado">verificando conexion...</span>
+</header>
+
+<main>
+  <section>
+    <h2>Empresas cliente</h2>
+    <div id="tabla-empresas"></div>
+  </section>
+  <section>
+    <h2>Contratos</h2>
+    <div id="tabla-contratos"></div>
+  </section>
+  <section>
+    <h2>Clausulas</h2>
+    <div id="tabla-clausulas"></div>
+  </section>
+</main>
+
+<script>
+  // Pagina intencionalmente simple: sin frameworks, solo fetch() a /api/clm/*
+  // (definido en src/routes/clmRoutes.js) y renderizado directo del DOM.
+
+  async function cargarEstado() {
+    const el = document.getElementById('estado');
+    try {
+      const res = await fetch('/api/clm/health');
+      const data = await res.json();
+      if (res.ok && data.status === 'ok') {
+        el.textContent = 'Conectado a PostgreSQL';
+        el.className = 'ok';
+      } else {
+        throw new Error(data.detalle || 'sin conexion');
+      }
+    } catch (e) {
+      el.textContent = 'Sin conexion a la base de datos';
+      el.className = 'error';
+    }
+  }
+
+  function tablaHTML(headers, rows, renderRow) {
+    if (!rows.length) return '<p class="vacio">No hay datos todavia.</p>';
+    const thead = '<tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr>';
+    const tbody = rows.map(renderRow).join('');
+    return `<table><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+  }
+
+  function fmtFecha(f) {
+    return f ? new Date(f).toLocaleDateString('es-BO') : '-';
+  }
+
+  async function cargarEmpresas() {
+    const contenedor = document.getElementById('tabla-empresas');
+    try {
+      const res = await fetch('/api/clm/empresas');
+      const empresas = await res.json();
+      contenedor.innerHTML = tablaHTML(
+        ['Razon social', 'NIT', 'Pais', 'Registrada', 'Activa'],
+        empresas,
+        (e) => `<tr><td>${e.razon_social}</td><td>${e.nit}</td><td>${e.pais}</td><td>${fmtFecha(e.fecha_registro)}</td><td>${e.activo ? 'Si' : 'No'}</td></tr>`
+      );
+    } catch (e) {
+      contenedor.innerHTML = '<p class="vacio">No se pudo cargar (revisa la conexion a la base de datos).</p>';
+    }
+  }
+
+  async function cargarContratos() {
+    const contenedor = document.getElementById('tabla-contratos');
+    try {
+      const res = await fetch('/api/clm/contratos');
+      const contratos = await res.json();
+      contenedor.innerHTML = tablaHTML(
+        ['Titulo', 'Empresa', 'Contraparte', 'Estado', 'Vigencia', 'Valor'],
+        contratos,
+        (c) => `<tr><td>${c.titulo}</td><td>${c.empresa}</td><td>${c.contraparte_nombre}</td><td><span class="badge ${c.estado}">${c.estado}</span></td><td>${fmtFecha(c.fecha_inicio_vigencia)} - ${fmtFecha(c.fecha_fin_vigencia)}</td><td>${c.valor_contrato ? Number(c.valor_contrato).toLocaleString('es-BO') + ' ' + (c.moneda || '') : '-'}</td></tr>`
+      );
+    } catch (e) {
+      contenedor.innerHTML = '<p class="vacio">No se pudo cargar (revisa la conexion a la base de datos).</p>';
+    }
+  }
+
+  async function cargarClausulas() {
+    const contenedor = document.getElementById('tabla-clausulas');
+    try {
+      const res = await fetch('/api/clm/clausulas');
+      const clausulas = await res.json();
+      contenedor.innerHTML = tablaHTML(
+        ['Contrato', '#', 'Titulo', 'Tipo', 'Modificable', 'Version'],
+        clausulas,
+        (cl) => `<tr><td>${cl.contrato}</td><td>${cl.orden}</td><td>${cl.titulo}</td><td>${cl.tipo_clausula}</td><td>${cl.es_modificable ? 'Si' : 'No'}</td><td>${cl.version}</td></tr>`
+      );
+    } catch (e) {
+      contenedor.innerHTML = '<p class="vacio">No se pudo cargar (revisa la conexion a la base de datos).</p>';
+    }
+  }
+
+  cargarEstado();
+  cargarEmpresas();
+  cargarContratos();
+  cargarClausulas();
+</script>
+
+</body>
+</html>
