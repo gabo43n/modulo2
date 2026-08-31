@@ -1,0 +1,184 @@
+openapi: 3.0.3
+info:
+  title: CLM - Contratos (PostgreSQL)
+  description: |
+    API de solo estas 3 tablas: empresa_cliente, contrato y clausula.
+    Es el modulo del practico del diplomado (modulo 2): conecta por
+    PostgreSQL usando el paquete "pg" y expone lectura y creacion de
+    registros. No incluye la Agenda Telefonica (esa sigue documentada
+    en /api/docs).
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3000
+    description: Servidor de desarrollo
+
+tags:
+  - name: CLM
+    description: empresa_cliente / contrato / clausula (PostgreSQL)
+
+paths:
+  /api/clm/health:
+    get:
+      tags: [CLM]
+      summary: Estado de la conexion a PostgreSQL
+      operationId: clmHealth
+      responses:
+        '200':
+          description: Conectado a PostgreSQL
+        '503':
+          description: Sin conexion a PostgreSQL
+
+
+  /api/clm/empresas:
+    get:
+      tags: [CLM]
+      summary: Listar empresas cliente (tabla empresa_cliente)
+      operationId: clmListEmpresas
+      responses:
+        '200':
+          description: Lista de empresas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id_empresa: { type: string, format: uuid }
+                    razon_social: { type: string }
+                    nit: { type: string }
+                    pais: { type: string }
+                    fecha_registro: { type: string, format: date-time }
+                    activo: { type: boolean }
+
+    post:
+      tags: [CLM]
+      summary: Crear una empresa cliente
+      operationId: clmCreateEmpresa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [razon_social, nit, pais]
+              properties:
+                razon_social: { type: string, example: "Constructora Andina S.A." }
+                nit: { type: string, example: "1234567890" }
+                direccion_fiscal: { type: string, nullable: true }
+                pais: { type: string, example: "Bolivia" }
+                activo: { type: boolean, default: true }
+      responses:
+        '201':
+          description: Empresa creada
+        '400':
+          description: Datos invalidos
+        '409':
+          description: Ya existe una empresa con ese NIT
+
+
+  /api/clm/contratos:
+    get:
+      tags: [CLM]
+      summary: Listar contratos (tabla contrato, con nombre de empresa)
+      operationId: clmListContratos
+      responses:
+        '200':
+          description: Lista de contratos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id_contrato: { type: string, format: uuid }
+                    titulo: { type: string }
+                    contraparte_nombre: { type: string }
+                    estado:
+                      type: string
+                      enum: [Borrador, Negociacion, Validez_Legal, Anulado, Expirado]
+                    fecha_inicio_vigencia: { type: string, format: date, nullable: true }
+                    fecha_fin_vigencia: { type: string, format: date, nullable: true }
+                    valor_contrato: { type: number, nullable: true }
+                    moneda: { type: string, nullable: true }
+                    empresa: { type: string }
+
+    post:
+      tags: [CLM]
+      summary: Crear un contrato
+      operationId: clmCreateContrato
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_empresa, titulo, contraparte_nombre]
+              properties:
+                id_empresa: { type: string, format: uuid }
+                titulo: { type: string }
+                contraparte_nombre: { type: string }
+                estado:
+                  type: string
+                  enum: [Borrador, Negociacion, Validez_Legal, Anulado, Expirado]
+                  default: Borrador
+                fecha_inicio_vigencia: { type: string, format: date, nullable: true }
+                fecha_fin_vigencia: { type: string, format: date, nullable: true }
+                valor_contrato: { type: number, nullable: true }
+                moneda: { type: string, nullable: true, example: "BOB" }
+      responses:
+        '201':
+          description: Contrato creado
+        '400':
+          description: Datos invalidos (o id_empresa que no existe)
+
+
+  /api/clm/clausulas:
+    get:
+      tags: [CLM]
+      summary: Listar clausulas (tabla clausula, con titulo de contrato)
+      operationId: clmListClausulas
+      responses:
+        '200':
+          description: Lista de clausulas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id_clausula: { type: string, format: uuid }
+                    orden: { type: integer }
+                    titulo: { type: string }
+                    tipo_clausula: { type: string }
+                    es_modificable: { type: boolean }
+                    version: { type: integer }
+                    contrato: { type: string }
+
+    post:
+      tags: [CLM]
+      summary: Crear una clausula
+      operationId: clmCreateClausula
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_contrato, orden, titulo, contenido]
+              properties:
+                id_contrato: { type: string, format: uuid }
+                orden: { type: integer, minimum: 1 }
+                titulo: { type: string }
+                contenido: { type: string }
+                tipo_clausula: { type: string, default: estandar }
+                es_modificable: { type: boolean, default: true }
+      responses:
+        '201':
+          description: Clausula creada
+        '400':
+          description: Datos invalidos (o id_contrato que no existe)
+
