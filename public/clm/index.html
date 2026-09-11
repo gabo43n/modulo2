@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard CLM - PostgreSQL</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, Segoe UI, Arial, sans-serif; margin: 0; background: #f4f5f7; color: #1a1a1a; }
+  header { background: #1e293b; color: #fff; padding: 1.25rem 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  header h1 { font-size: 1.25rem; margin: 0; }
+  header p { margin: 0.15rem 0 0; font-size: 0.8rem; color: #94a3b8; }
+  .header-right { display: flex; align-items: center; gap: 0.75rem; }
+  #estado { font-size: 0.85rem; padding: 0.25rem 0.75rem; border-radius: 999px; background: #64748b; }
+  #estado.ok { background: #16a34a; }
+  #estado.error { background: #dc2626; }
+  #btn-logout {
+    background: transparent; border: 1px solid #475569; color: #cbd5e1;
+    padding: 0.35rem 0.75rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem;
+  }
+  #btn-logout:hover { background: #334155; }
+  main { padding: 1.5rem 2rem; max-width: 1200px; margin: 0 auto; }
+  section { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem; overflow: hidden; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; padding: 0.85rem 1.25rem; border-bottom: 1px solid #e5e7eb; background: #f8fafc; }
+  .section-head h2 { margin: 0; font-size: 1rem; }
+  .btn-toggle {
+    background: #1e293b; color: #fff; border: none; border-radius: 6px;
+    padding: 0.4rem 0.85rem; font-size: 0.85rem; cursor: pointer;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.6rem 1.25rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  th { color: #64748b; font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  .vacio { padding: 1.25rem; color: #94a3b8; font-style: italic; }
+  .badge { display: inline-block; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.75rem; background: #e2e8f0; }
+  .badge.Validez_Legal { background: #dcfce7; color: #166534; }
+  .badge.Anulado, .badge.Expirado { background: #fee2e2; color: #991b1b; }
+  .badge.Negociacion { background: #fef9c3; color: #854d0e; }
+  .acciones { display: flex; gap: 0.4rem; white-space: nowrap; }
+  .btn-mini {
+    border: 1px solid #cbd5e1; background: #fff; border-radius: 5px;
+    padding: 0.25rem 0.55rem; font-size: 0.78rem; cursor: pointer;
+  }
+  .btn-mini.editar:hover { border-color: #1e293b; }
+  .btn-mini.eliminar { color: #b91c1c; border-color: #fecaca; }
+  .btn-mini.eliminar:hover { background: #fee2e2; }
+  form.formulario {
+    padding: 1rem 1.25rem; background: #f8fafc; border-bottom: 1px solid #e5e7eb;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem;
+  }
+  form.formulario .campo-full { grid-column: 1 / -1; }
+  form.formulario label { display: block; font-size: 0.78rem; color: #475569; margin-bottom: 0.25rem; }
+  form.formulario input, form.formulario select, form.formulario textarea {
+    width: 100%; padding: 0.45rem 0.6rem; border: 1px solid #cbd5e1; border-radius: 5px; font-size: 0.88rem;
+    font-family: inherit;
+  }
+  form.formulario textarea { resize: vertical; min-height: 3.5rem; }
+  .campo-check { display: flex; align-items: center; gap: 0.4rem; margin-top: 1.4rem; }
+  .campo-check input { width: auto; }
+  .form-acciones { grid-column: 1 / -1; display: flex; gap: 0.6rem; align-items: center; }
+  .form-acciones button[type="submit"] {
+    background: #1e293b; color: #fff; border: none; border-radius: 6px;
+    padding: 0.5rem 1rem; font-size: 0.88rem; cursor: pointer;
+  }
+  .form-acciones .cancelar { background: none; border: none; color: #64748b; cursor: pointer; font-size: 0.85rem; text-decoration: underline; }
+  .form-error { color: #b91c1c; font-size: 0.82rem; grid-column: 1 / -1; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Dashboard CLM (PostgreSQL)</h1>
+    <p>empresa_cliente / contrato / clausula</p>
+  </div>
+  <div class="header-right">
+    <span id="estado">verificando conexion...</span>
+    <button id="btn-logout" type="button">Cerrar sesion</button>
+  </div>
+</header>
+
+<main>
+  <section>
+    <div class="section-head">
+      <h2>Empresas cliente</h2>
+      <button class="btn-toggle" data-toggle-form="empresas">+ Nueva empresa</button>
+    </div>
+    <form class="formulario" id="form-empresas" hidden>
+      <input type="hidden" id="empresas-id">
+      <div>
+        <label for="empresas-razon_social">Razon social</label>
+        <input id="empresas-razon_social" required>
+      </div>
+      <div>
+        <label for="empresas-nit">NIT</label>
+        <input id="empresas-nit" required>
+      </div>
+      <div>
+        <label for="empresas-pais">Pais</label>
+        <input id="empresas-pais" required>
+      </div>
+      <div class="campo-full">
+        <label for="empresas-direccion_fiscal">Direccion fiscal (opcional)</label>
+        <input id="empresas-direccion_fiscal">
+      </div>
+      <div class="campo-check">
+        <input type="checkbox" id="empresas-activo" checked>
+        <label for="empresas-activo" style="margin:0">Activa</label>
+      </div>
+      <div class="form-acciones">
+        <button type="submit">Crear empresa</button>
+        <button type="button" class="cancelar" hidden>Cancelar</button>
+        <span class="form-error" hidden></span>
+      </div>
+    </form>
+    <div id="tabla-empresas"></div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Contratos</h2>
+      <button class="btn-toggle" data-toggle-form="contratos">+ Nuevo contrato</button>
+    </div>
+    <form class="formulario" id="form-contratos" hidden>
+      <input type="hidden" id="contratos-id">
+      <div>
+        <label for="contratos-id_empresa">Empresa</label>
+        <select id="contratos-id_empresa" required></select>
+      </div>
+      <div>
+        <label for="contratos-titulo">Titulo</label>
+        <input id="contratos-titulo" required>
+      </div>
+      <div>
+        <label for="contratos-contraparte_nombre">Contraparte</label>
+        <input id="contratos-contraparte_nombre" required>
+      </div>
+      <div>
+        <label for="contratos-estado">Estado</label>
+        <select id="contratos-estado">
+          <option value="Borrador">Borrador</option>
+          <option value="Negociacion">Negociacion</option>
+          <option value="Validez_Legal">Validez_Legal</option>
+          <option value="Anulado">Anulado</option>
+          <option value="Expirado">Expirado</option>
+        </select>
+      </div>
+      <div>
+        <label for="contratos-fecha_inicio_vigencia">Inicio vigencia</label>
+        <input type="date" id="contratos-fecha_inicio_vigencia">
+      </div>
+      <div>
+        <label for="contratos-fecha_fin_vigencia">Fin vigencia</label>
+        <input type="date" id="contratos-fecha_fin_vigencia">
+      </div>
+      <div>
+        <label for="contratos-valor_contrato">Valor</label>
+        <input type="number" step="0.01" min="0" id="contratos-valor_contrato">
+      </div>
+      <div>
+        <label for="contratos-moneda">Moneda (ej. BOB)</label>
+        <input id="contratos-moneda" maxlength="3">
+      </div>
+      <div class="form-acciones">
+        <button type="submit">Crear contrato</button>
+        <button type="button" class="cancelar" hidden>Cancelar</button>
+        <span class="form-error" hidden></span>
+      </div>
+    </form>
+    <div id="tabla-contratos"></div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Clausulas</h2>
+      <button class="btn-toggle" data-toggle-form="clausulas">+ Nueva clausula</button>
+    </div>
+    <form class="formulario" id="form-clausulas" hidden>
+      <input type="hidden" id="clausulas-id">
+      <div>
+        <label for="clausulas-id_contrato">Contrato</label>
+        <select id="clausulas-id_contrato" required></select>
+      </div>
+      <div>
+        <label for="clausulas-orden">Orden</label>
+        <input type="number" min="1" id="clausulas-orden" required>
+      </div>
+      <div>
+        <label for="clausulas-titulo">Titulo</label>
+        <input id="clausulas-titulo" required>
+      </div>
+      <div>
+        <label for="clausulas-tipo_clausula">Tipo</label>
+        <input id="clausulas-tipo_clausula" placeholder="estandar">
+      </div>
+      <div class="campo-full">
+        <label for="clausulas-contenido">Contenido</label>
+        <textarea id="clausulas-contenido" required></textarea>
+      </div>
+      <div class="campo-check">
+        <input type="checkbox" id="clausulas-es_modificable" checked>
+        <label for="clausulas-es_modificable" style="margin:0">Es modificable</label>
+      </div>
+      <div class="form-acciones">
+        <button type="submit">Crear clausula</button>
+        <button type="button" class="cancelar" hidden>Cancelar</button>
+        <span class="form-error" hidden></span>
+      </div>
+    </form>
+    <div id="tabla-clausulas"></div>
+  </section>
+</main>
+
+<script>
+  // -----------------------------------------------------------------------
+  // Pagina protegida (ver requireAuthPage en src/middleware/clmAuth.js: si
+  // no hay sesion, esta pagina ni siquiera llega a servirse). Aun asi, cada
+  // fetch() de aqui vuelve a chequear 401: la sesion puede vencer (dura 8h)
+  // mientras la pagina sigue abierta, y ahi si necesitamos reaccionar en el
+  // cliente, no solo al cargar.
+  // -----------------------------------------------------------------------
+  async function authFetch(url, opciones = {}) {
+    const res = await fetch(url, {
+      ...opciones,
+      headers: { 'Content-Type': 'application/json', ...(opciones.headers || {}) },
+    });
+    if (res.status === 401) {
+      window.location.href = '/clm/login.html';
+      throw new Error('sesion expirada');
+    }
+    return res;
+  }
+
+  document.getElementById('btn-logout').addEventListener('click', async () => {
+    await authFetch('/api/clm/auth/logout', { method: 'POST' });
+    window.location.href = '/clm/login.html';
+  });
+
+  async function cargarEstado() {
+    const el = document.getElementById('estado');
+    try {
+      const res = await authFetch('/api/clm/health');
+      const data = await res.json();
+      if (res.ok && data.status === 'ok') {
+        el.textContent = 'Conectado a PostgreSQL';
+        el.className = 'ok';
+      } else {
+        throw new Error(data.detalle || 'sin conexion');
+      }
+    } catch (e) {
+      el.textContent = 'Sin conexion a la base de datos';
+      el.className = 'error';
+    }
+  }
+
+  function fmtFecha(f) {
+    return f ? String(f).slice(0, 10).split('-').reverse().join('/') : '-';
+  }
+
+  // Guarda las listas mas recientes para llenar los <select> de los
+  // formularios de contratos (necesita empresas) y clausulas (necesita
+  // contratos).
+  const cache = { empresas: [], contratos: [] };
+
+  // Estado de edicion por seccion: null = formulario en modo "crear";
+  // un id = formulario en modo "editar ese registro".
+  const editando = { empresas: null, contratos: null, clausulas: null };
+
+  function mostrarFormulario(seccion, mostrar) {
+    document.getElementById(`form-${seccion}`).hidden = !mostrar;
+  }
+
+  document.querySelectorAll('[data-toggle-form]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const seccion = btn.dataset.toggleForm;
+      const form = document.getElementById(`form-${seccion}`);
+      const estaOculto = form.hidden;
+      if (estaOculto) {
+        salirModoEdicion(seccion); // por si quedo a medio editar algo antes
+      }
+      mostrarFormulario(seccion, estaOculto);
+    });
+  });
+
+  function mostrarErrorForm(seccion, mensaje) {
+    const el = document.querySelector(`#form-${seccion} .form-error`);
+    el.textContent = mensaje;
+    el.hidden = false;
+  }
+
+  function limpiarErrorForm(seccion) {
+    document.querySelector(`#form-${seccion} .form-error`).hidden = true;
+  }
+
+  function entrarModoEdicion(seccion, id, textoBoton) {
+    editando[seccion] = id;
+    document.getElementById(`${seccion}-id`).value = id;
+    document.querySelector(`#form-${seccion} button[type="submit"]`).textContent = textoBoton;
+    document.querySelector(`#form-${seccion} .cancelar`).hidden = false;
+    mostrarFormulario(seccion, true);
+  }
+
+  function salirModoEdicion(seccion) {
+    editando[seccion] = null;
+    document.getElementById(`form-${seccion}`).reset();
+    document.getElementById(`${seccion}-id`).value = '';
+    document.querySelector(`#form-${seccion} .cancelar`).hidden = true;
+    limpiarErrorForm(seccion);
+  }
+
+  document.querySelectorAll('.cancelar').forEach((btn) => {
+    const seccion = btn.closest('form').id.replace('form-', '');
+    btn.addEventListener('click', () => {
+      salirModoEdicion(seccion);
+      const textoCrear = { empresas: 'Crear empresa', contratos: 'Crear contrato', clausulas: 'Crear clausula' };
+      document.querySelector(`#form-${seccion} button[type="submit"]`).textContent = textoCrear[seccion];
+    });
+  });
+
+  function tablaHTML(headers, rows, renderRow) {
+    if (!rows.length) return '<p class="vacio">No hay datos todavia.</p>';
+    const thead = '<tr>' + headers.map(h => `<th>${h}</th>`).join('') + '<th>Acciones</th></tr>';
+    const tbody = rows.map(renderRow).join('');
+    return `<table><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+  }
+
+  function botonesAccion(seccion, id) {
+    return `<td class="acciones">
+      <button class="btn-mini editar" data-editar="${seccion}" data-id="${id}">Editar</button>
+      <button class="btn-mini eliminar" data-eliminar="${seccion}" data-id="${id}">Eliminar</button>
+    </td>`;
+  }
+
+  // -----------------------------------------------------------------------
+  // EMPRESAS
+  // -----------------------------------------------------------------------
+  async function cargarEmpresas() {
+    const contenedor = document.getElementById('tabla-empresas');
+    try {
+      const res = await authFetch('/api/clm/empresas');
+      const empresas = await res.json();
+      cache.empresas = empresas;
+      llenarSelectEmpresas();
+      contenedor.innerHTML = tablaHTML(
+        ['Razon social', 'NIT', 'Pais', 'Registrada', 'Activa'],
+        empresas,
+        (e) => `<tr>
+          <td>${e.razon_social}</td><td>${e.nit}</td><td>${e.pais}</td>
+          <td>${fmtFecha(e.fecha_registro)}</td><td>${e.activo ? 'Si' : 'No'}</td>
+          ${botonesAccion('empresas', e.id_empresa)}
+        </tr>`
+      );
+    } catch (e) {
+      contenedor.innerHTML = '<p class="vacio">No se pudo cargar (revisa la conexion a la base de datos).</p>';
+    }
+  }
+
+  function llenarSelectEmpresas() {
+    const select = document.getElementById('contratos-id_empresa');
+    const seleccionActual = select.value;
+    select.innerHTML = cache.empresas.map(e => `<option value="${e.id_empresa}">${e.razon_social}</option>`).join('');
+    if (seleccionActual) select.value = seleccionActual;
+  }
+
+  document.getElementById('form-empresas').addEventListener('submit', async (evento) => {
+    evento.preventDefault();
+    limpiarErrorForm('empresas');
+    const cuerpo = {
+      razon_social: document.getElementById('empresas-razon_social').value,
+      nit: document.getElementById('empresas-nit').value,
+      pais: document.getElementById('empresas-pais').value,
+      direccion_fiscal: document.getElementById('empresas-direccion_fiscal').value || null,
+      activo: document.getElementById('empresas-activo').checked,
+    };
+    const id = editando.empresas;
+    try {
+      const res = await authFetch(id ? `/api/clm/empresas/${id}` : '/api/clm/empresas', {
+        method: id ? 'PUT' : 'POST',
+        body: JSON.stringify(cuerpo),
+      });
+      const datos = await res.json();
+      if (!res.ok) throw new Error(datos.message || 'No se pudo guardar');
+      salirModoEdicion('empresas');
+      document.querySelector('#form-empresas button[type="submit"]').textContent = 'Crear empresa';
+      mostrarFormulario('empresas', false);
+      cargarEmpresas();
+    } catch (err) {
+      mostrarErrorForm('empresas', err.message);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // CONTRATOS
+  // -----------------------------------------------------------------------
+  async function cargarContratos() {
+    const contenedor = document.getElementById('tabla-contratos');
+    try {
+      const res = await authFetch('/api/clm/contratos');
+      const contratos = await res.json();
+      cache.contratos = contratos;
+      llenarSelectContratos();
+      contenedor.innerHTML = tablaHTML(
+        ['Titulo', 'Empresa', 'Contraparte', 'Estado', 'Vigencia', 'Valor'],
+        contratos,
+        (c) => `<tr>
+          <td>${c.titulo}</td><td>${c.empresa}</td><td>${c.contraparte_nombre}</td>
+          <td><span class="badge ${c.estado}">${c.estado}</span></td>
+          <td>${fmtFecha(c.fecha_inicio_vigencia)} - ${fmtFecha(c.fecha_fin_vigencia)}</td>
+          <td>${c.valor_contrato ? Number(c.valor_contrato).toLocaleString('es-BO') + ' ' + (c.moneda || '') : '-'}</td>
+          ${botonesAccion('contratos', c.id_contrato)}
+        </tr>`
+      );
+    } catch (e) {
+      contenedor.innerHTML = '<p class="vacio">No se pudo cargar (revisa la conexion a la base de datos).</p>';
+    }
+  }
+
+  function llenarSelectContratos() {
+    const select = document.getElementById('clausulas-id_contrato');
+    const seleccionActual = select.value;
+    select.innerHTML = cache.contratos.map(c => `<option value="${c.id_contrato}">${c.titulo}</option>`).join('');
+    if (seleccionActual) select.value = seleccionActual;
+  }
+
+  document.getElementById('form-contratos').addEventListener('submit', async (evento) => {
+    evento.preventDefault();
+    limpiarErrorForm('contratos');
+    const valor = document.getElementById('contratos-valor_contrato').value;
+    const cuerpo = {
+      id_empresa: document.getElementById('contratos-id_empresa').value,
+      titulo: document.getElementById('contratos-titulo').value,
+      contraparte_nombre: document.getElementById('contratos-contraparte_nombre').value,
+      estado: document.getElementById('contratos-estado').value,
+      fecha_inicio_vigencia: document.getElementById('contratos-fecha_inicio_vigencia').value || null,
+      fecha_fin_vigencia: document.getElementById('contratos-fecha_fin_vigencia').value || null,
+      valor_contrato: valor ? Number(valor) : null,
+      moneda: document.getElementById('contratos-moneda').value || null,
+    };
+    const id = editando.contratos;
+    try {
+      const res = await authFetch(id ? `/api/clm/contratos/${id}` : '/api/clm/contratos', {
+        method: id ? 'PUT' : 'POST',
+        body: JSON.stringify(cuerpo),
+      });
+      const datos = await res.json();
+      if (!res.ok) throw new Error(datos.message || 'No se pudo guardar');
+      salirModoEdicion('contratos');
+      document.querySelector('#form-contratos button[type="submit"]').textContent = 'Crear contrato';
+      mostrarFormulario('contratos', false);
+      cargarContratos();
+    } catch (err) {
+      mostrarErrorForm('contratos', err.message);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // CLAUSULAS
+  // -----------------------------------------------------------------------
+  async function cargarClausulas() {
+    const contenedor = document.getElementById('tabla-clausulas');
+    try {
+      const res = await authFetch('/api/clm/clausulas');
+      const clausulas = await res.json();
+      cache.clausulas = clausulas;
+      contenedor.innerHTML = tablaHTML(
+        ['Contrato', '#', 'Titulo', 'Tipo', 'Modificable', 'Version'],
+        clausulas,
+        (cl) => `<tr>
+          <td>${cl.contrato}</td><td>${cl.orden}</td><td>${cl.titulo}</td>
+          <td>${cl.tipo_clausula}</td><td>${cl.es_modificable ? 'Si' : 'No'}</td><td>${cl.version}</td>
+          ${botonesAccion('clausulas', cl.id_clausula)}
+        </tr>`
+      );
+    } catch (e) {
+      contenedor.innerHTML = '<p class="vacio">No se pudo cargar (revisa la conexion a la base de datos).</p>';
+    }
+  }
+
+  document.getElementById('form-clausulas').addEventListener('submit', async (evento) => {
+    evento.preventDefault();
+    limpiarErrorForm('clausulas');
+    const cuerpo = {
+      id_contrato: document.getElementById('clausulas-id_contrato').value,
+      orden: Number(document.getElementById('clausulas-orden').value),
+      titulo: document.getElementById('clausulas-titulo').value,
+      contenido: document.getElementById('clausulas-contenido').value,
+      tipo_clausula: document.getElementById('clausulas-tipo_clausula').value || 'estandar',
+      es_modificable: document.getElementById('clausulas-es_modificable').checked,
+    };
+    const id = editando.clausulas;
+    try {
+      const res = await authFetch(id ? `/api/clm/clausulas/${id}` : '/api/clm/clausulas', {
+        method: id ? 'PUT' : 'POST',
+        body: JSON.stringify(cuerpo),
+      });
+      const datos = await res.json();
+      if (!res.ok) throw new Error(datos.message || 'No se pudo guardar');
+      salirModoEdicion('clausulas');
+      document.querySelector('#form-clausulas button[type="submit"]').textContent = 'Crear clausula';
+      mostrarFormulario('clausulas', false);
+      cargarClausulas();
+    } catch (err) {
+      mostrarErrorForm('clausulas', err.message);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // Editar / eliminar: un solo listener en <main> (delegacion de eventos)
+  // en vez de uno por boton — como las filas se re-generan cada vez que se
+  // recarga una tabla, poner listeners por boton implicaria re-agregarlos
+  // cada vez. Delegando en un ancestro fijo (que nunca se re-crea) evitamos
+  // ese problema.
+  // -----------------------------------------------------------------------
+  document.querySelector('main').addEventListener('click', async (evento) => {
+    const btnEditar = evento.target.closest('[data-editar]');
+    const btnEliminar = evento.target.closest('[data-eliminar]');
+
+    if (btnEditar) {
+      const seccion = btnEditar.dataset.editar;
+      const id = btnEditar.dataset.id;
+      precargarFormulario(seccion, id);
+    }
+
+    if (btnEliminar) {
+      const seccion = btnEliminar.dataset.eliminar;
+      const id = btnEliminar.dataset.id;
+      const nombre = { empresas: 'esta empresa', contratos: 'este contrato', clausulas: 'esta clausula' }[seccion];
+      if (!confirm(`¿Eliminar ${nombre}? Esta accion no se puede deshacer.`)) return;
+
+      try {
+        const res = await authFetch(`/api/clm/${seccion}/${id}`, { method: 'DELETE' });
+        if (!res.ok && res.status !== 204) {
+          const datos = await res.json();
+          throw new Error(datos.message || 'No se pudo eliminar');
+        }
+        ({ empresas: cargarEmpresas, contratos: cargarContratos, clausulas: cargarClausulas })[seccion]();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+  });
+
+  function precargarFormulario(seccion, id) {
+    if (seccion === 'empresas') {
+      const e = cache.empresas.find(x => x.id_empresa === id);
+      if (!e) return;
+      document.getElementById('empresas-razon_social').value = e.razon_social;
+      document.getElementById('empresas-nit').value = e.nit;
+      document.getElementById('empresas-pais').value = e.pais;
+      document.getElementById('empresas-direccion_fiscal').value = e.direccion_fiscal || '';
+      document.getElementById('empresas-activo').checked = Boolean(e.activo);
+      entrarModoEdicion('empresas', id, 'Guardar cambios');
+    }
+
+    if (seccion === 'contratos') {
+      const c = cache.contratos.find(x => x.id_contrato === id);
+      if (!c) return;
+      llenarSelectEmpresas();
+      document.getElementById('contratos-id_empresa').value = c.id_empresa;
+      document.getElementById('contratos-titulo').value = c.titulo;
+      document.getElementById('contratos-contraparte_nombre').value = c.contraparte_nombre;
+      document.getElementById('contratos-estado').value = c.estado;
+      document.getElementById('contratos-fecha_inicio_vigencia').value = fmtFechaInput(c.fecha_inicio_vigencia);
+      document.getElementById('contratos-fecha_fin_vigencia').value = fmtFechaInput(c.fecha_fin_vigencia);
+      document.getElementById('contratos-valor_contrato').value = c.valor_contrato || '';
+      document.getElementById('contratos-moneda').value = c.moneda || '';
+      entrarModoEdicion('contratos', id, 'Guardar cambios');
+    }
+
+    if (seccion === 'clausulas') {
+      const cl = cache.clausulas.find(x => x.id_clausula === id);
+      if (!cl) return;
+      llenarSelectContratos();
+      document.getElementById('clausulas-id_contrato').value = cl.id_contrato;
+      document.getElementById('clausulas-orden').value = cl.orden;
+      document.getElementById('clausulas-titulo').value = cl.titulo;
+      document.getElementById('clausulas-contenido').value = cl.contenido;
+      document.getElementById('clausulas-tipo_clausula').value = cl.tipo_clausula;
+      document.getElementById('clausulas-es_modificable').checked = Boolean(cl.es_modificable);
+      entrarModoEdicion('clausulas', id, 'Guardar cambios');
+    }
+  }
+
+  // Postgres devuelve las columnas DATE como algo tipo "2026-01-01T00:00:00.000Z";
+  // <input type="date"> necesita exactamente "2026-01-01" (los primeros 10 caracteres).
+  function fmtFechaInput(f) {
+    return f ? String(f).slice(0, 10) : '';
+  }
+
+  cargarEstado();
+  cargarEmpresas();
+  cargarContratos();
+  cargarClausulas();
+</script>
+
+</body>
+</html>
